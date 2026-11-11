@@ -92,3 +92,7 @@ fed in as a signal (`sig~ 1`), which is the form Heavy supports.
   `BAND_BASE_HZ` / `BAND_COUNT` in the generator.
 - It doesn't detect a re-attack of the *same* note while the sound keeps ringing.
   The gate has to close in between.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
