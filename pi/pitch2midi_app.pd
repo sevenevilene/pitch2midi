@@ -1,0 +1,14 @@
+#N canvas 100 100 620 320 12;
+#X text 20 10 Top-level patch compiled by pi/build.sh (Heavy -> DPF JACK app + LV2);
+#X obj 20 60 adc~ 1;
+#X obj 20 200 pitch2midi~ 1 -50;
+#X obj 200 60 r thresh @hv_param -80 0 -50;
+#X msg 200 100 thresh \$1;
+#X obj 420 60 r stable @hv_param 0 20 2;
+#X msg 420 100 stable \$1;
+#X text 20 250 Parameters (thresh in dBFS / stable in 4 ms ticks) are exposed to LV2 hosts.;
+#X connect 1 0 2 0;
+#X connect 3 0 4 0;
+#X connect 4 0 2 1;
+#X connect 5 0 6 0;
+#X connect 6 0 2 1;

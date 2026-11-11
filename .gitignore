@@ -5,3 +5,6 @@ test/out*.txt
 build/
 .DS_Store
 __pycache__/
+pi/build/
+pi/dpf/
+pi/.venv/

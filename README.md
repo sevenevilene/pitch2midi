@@ -15,6 +15,7 @@ and can be exported to C++/Daisy/DPF/Web.
 | `pitch2midi~-help.pd` | help / example patch |
 | `tools/build_patches.py` | generator: the patches are generated from this script. Edit it and re-run it to change them |
 | `test/` | synthetic test suite (Pd batch run + Heavy-compiled C run) |
+| `pi/` | Raspberry Pi / Patchbox OS: builds a compiled JACK app with MIDI out (see [pi/README.md](pi/README.md)) |
 
 To reuse it, copy `pitch2midi~.pd` and `p2m.band~.pd` into your project folder
 (or into a folder on Pd's search path) and create `[pitch2midi~ 1 -50]`.

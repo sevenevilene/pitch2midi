@@ -1,0 +1,13 @@
+{
+  "name": "pitch2midi",
+  "dpf": {
+    "description": "Monophonic audio to MIDI pitch detector",
+    "maker": "sevenevilene",
+    "license": "MIT",
+    "homepage": "https://github.com/sevenevilene/pitch2midi",
+    "plugin_uri": "https://github.com/sevenevilene/pitch2midi",
+    "midi_input": true,
+    "midi_output": true,
+    "plugin_formats": ["jack", "lv2"]
+  }
+}
