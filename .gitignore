@@ -1,0 +1,7 @@
+# generated test audio (recreate with: python3 test/make_test_audio.py)
+test/test.wav
+test/truth.csv
+test/out*.txt
+build/
+.DS_Store
+__pycache__/

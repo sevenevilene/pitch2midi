@@ -1,0 +1,4 @@
+#N canvas 0 50 450 300 12;
+#X obj 20 20 adc~;
+#X obj 20 60 pitch2midi~ 1 -50;
+#X connect 0 0 1 0;
