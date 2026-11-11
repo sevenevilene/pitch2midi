@@ -2,7 +2,7 @@
   "name": "pitch2midi",
   "dpf": {
     "description": "Monophonic audio to MIDI pitch detector",
-    "maker": "sevenevilene",
+    "maker": "Syver Ravn Myhre",
     "license": "MIT",
     "homepage": "https://github.com/sevenevilene/pitch2midi",
     "plugin_uri": "https://github.com/sevenevilene/pitch2midi",
