@@ -6,9 +6,17 @@
 #X msg 200 100 thresh \$1;
 #X obj 420 60 r stable @hv_param 0 20 2;
 #X msg 420 100 stable \$1;
-#X text 20 250 Parameters (thresh in dBFS / stable in 4 ms ticks) are exposed to LV2 hosts.;
+#X text 20 250 Parameters (thresh in dBFS / stable in 4 ms ticks / bend 0-1 \, off by default) are exposed to LV2 hosts.;
+#X obj 620 60 r bend @hv_param 0 1 0;
+#X msg 620 100 bend \$1;
+#X obj 620 140 loadbang;
+#X msg 620 170 bend 0;
 #X connect 1 0 2 0;
 #X connect 3 0 4 0;
 #X connect 4 0 2 1;
 #X connect 5 0 6 0;
 #X connect 6 0 2 1;
+#X connect 8 0 9 0;
+#X connect 9 0 2 1;
+#X connect 10 0 11 0;
+#X connect 11 0 2 1;

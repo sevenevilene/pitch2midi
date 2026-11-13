@@ -58,11 +58,13 @@ named `a2j:...`.
 
 ## Settings
 
-The app has no UI and starts with threshold -50 dBFS and stable = 2.
+The app has no UI and starts with threshold -50 dBFS, stable = 2 and
+**pitch bend off** (notes only).
 To change the defaults, edit the `pitch2midi~` arguments in
 `pi/pitch2midi_app.pd`, or the default values of the `@hv_param` receives in the
-same file, then rebuild. In the LV2 plugin, `thresh` and `stable` are plugin
-parameters you can change from the host.
+same file, then rebuild. In the LV2 plugin, `thresh`, `stable` and `bend` (0 = off, 1 = on)
+are plugin parameters you can change from the host. To turn pitch bend on in the
+JACK app, change `[bend 0(` to `[bend 1(` in the app patch and rebuild.
 
 ## Notes
 
