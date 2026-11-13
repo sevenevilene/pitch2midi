@@ -11,6 +11,7 @@ and can be exported to C++/Daisy/DPF/Web.
 | file | what |
 |---|---|
 | `pitch2midi~.pd` | the abstraction you use |
+| `pitch2midi-bass~.pd` | the same detector tuned for bass guitar (see below) |
 | `p2m.band~.pd` | internal sub-abstraction (keep it next to `pitch2midi~.pd`) |
 | `pitch2midi~-help.pd` | help / example patch |
 | `tools/build_patches.py` | generator: the patches are generated from this script. Edit it and re-run it to change them |
@@ -49,6 +50,28 @@ is only sent when it changes. Set your synth's bend range to the same number of
 semitones as `bendrange` (default 2). The bend keeps its last value after a
 note-off, so a release tail doesn't jump in pitch.
 
+## Bass guitar: `pitch2midi-bass~`
+
+Same interface and messages as `pitch2midi~`, tuned for bass:
+
+- **Range B0–~950 Hz** (5-string low B at 31 Hz up to the top frets of the G
+  string, plus harmonics/tapping). 10 bands from 36.7 Hz instead of 12 from 55 Hz.
+  The standard version can't go below about 32 Hz, so it misses low B.
+- **No high bands**: pick, slap and fret-noise transients can't produce
+  spurious high notes at the attack (the standard version sometimes does,
+  e.g. a short MIDI 93 blip before a low E). It also uses ~20 % less CPU.
+- **Octave-error guard**: a low band that holds a lot of energy but hasn't
+  settled into a steady period yet vetoes the higher bands for that tick. On a
+  low B string, where the 2nd harmonic is often much louder than the
+  fundamental, this stops it from playing the octave above first.
+- **Shorter stability wait** (1 period instead of 1.5), so low notes speak a
+  little sooner. Raise it with `stable <ticks>` if you get wrong notes at the attack.
+- `hip~ 15` instead of `hip~ 20`, so low B isn't attenuated.
+
+Both versions now also detect a **re-attack of the same note** (e.g. repeated
+8th notes on one string): if the level jumps by more than 6 dB, the same note
+can start again once it is stable.
+
 ## How it works
 
 1. A `hip~ 20` removes DC, then the signal feeds **12 half-octave low-pass bands**
@@ -63,7 +86,9 @@ note-off, so a release tail doesn't jump in pitch.
    cycle). The resulting frequency also has to fall inside that band's own range,
    which rejects octave errors. **The lowest valid band wins.**
 4. Note logic: a level gate with 6 dB hysteresis, ±0.8 semitone pitch hysteresis,
-   and a stability requirement of 2 ticks plus 1.5 periods. A release guard blocks
+   and a stability requirement of 2 ticks plus 1.5 periods. An onset detector
+   (a fast-decaying peak of the level rising 6 dB above a slow floor, 80 ms
+   refractory time) lets the same note retrigger. A release guard blocks
    new notes while the level is falling fast, so note tails and filter ringing
    don't trigger anything. Velocity comes from the level at the onset.
 
@@ -79,14 +104,33 @@ fundamental and vibrato, legato runs, Karplus-Strong plucks, and quiet notes at
 | Pd 0.57 vanilla, 48 kHz | 47/47 | 0 | 24 ms | |
 | **Heavy/hvcc compiled C**, 44.1 kHz | 47/47 | 0 | 33 ms | **0.5 % of one core** |
 
+The bass test (`test/make_bass_test_audio.py`) is 50 bass-like notes from B0 to
+G4: open strings, low notes with a weak fundamental, fretted notes, 8th notes
+and repeated notes on one string, legato, slap-like tones and quiet notes. Each
+note starts slightly sharp, like a plucked string.
+
+| run | correct | spurious | median onset latency | CPU |
+|---|---|---|---|---|
+| `pitch2midi~` (standard), Pd 44.1 kHz | 44/50 | 0 | 94 ms | |
+| **`pitch2midi-bass~`**, Pd 44.1 kHz | **50/50** | 0 | 92 ms | |
+| `pitch2midi-bass~`, Pd 48 kHz | 50/50 | 0 | 92 ms | |
+| `pitch2midi-bass~`, Heavy compiled C, 44.1 kHz | 50/50 | 0 | 98 ms | 0.4 % of one core |
+
+Bass latency is mostly physics: a low E (41 Hz) has a 24 ms period and the
+detector needs a few of them, so expect ~100–130 ms on the E string and up to
+~250 ms on a low B with a weak fundamental; notes from A2 up take 30–60 ms.
+
 Latency depends on pitch (about 12–20 ms above A4, 60–80 ms at E2/C2), because a
 detector has to see a couple of periods before it can trust a note.
 
-Re-run the tests:
+Re-run the tests (`test/run.sh` runs Pd in batch mode and scores the result;
+set `PD=` if Pd is somewhere else, and `SR=48000` for both scripts to test 48 kHz):
 
 ```bash
-python3 test/make_test_audio.py
-cd test && /Applications/Pd-0.57-0.app/Contents/Resources/bin/pd -nogui -batch -nomidi -r 44100 -stderr -path .. run_test.pd > out.txt 2>&1; python3 evaluate.py
+python3 test/make_test_audio.py && test/run.sh
+```
+```bash
+python3 test/make_bass_test_audio.py && test/run.sh bass_test.wav bass_truth.csv "pitch2midi-bass~ 1 -50"
 ```
 
 Heavy version (needs `pip install hvcc`):
@@ -101,10 +145,11 @@ fed in as a signal (`sig~ 1`), which is the form Heavy supports.
 ## Limits
 
 - Monophonic only. Chords give unpredictable results.
-- Range is about 40 Hz – 2.5 kHz (MIDI ~28–99). To change it, edit
-  `BAND_BASE_HZ` / `BAND_COUNT` in the generator.
-- It doesn't detect a re-attack of the *same* note while the sound keeps ringing.
-  The gate has to close in between.
+- Range is about 40 Hz – 2.5 kHz (MIDI ~28–99), or 31 Hz – ~950 Hz for the bass
+  version. To change it, edit `BAND_BASE_HZ` / `BAND_COUNT` or the `BASS`
+  settings in the generator.
+- A re-attack of the *same* note is only detected when the level jumps by more
+  than 6 dB. A very soft re-pluck over a loud ringing note is missed.
 
 ## License
 

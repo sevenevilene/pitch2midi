@@ -41,6 +41,7 @@
 #X obj 300 600 *~ 0.1;
 #X obj 300 630 dac~;
 #X text 620 260 To use it from ANOTHER patch or app with [notein]: pick a virtual MIDI port as Pd's MIDI output (macOS: IAC Driver in Audio MIDI Setup). Inside the same patch just use the outlets.;
+#X text 620 470 Bass guitar? Use [pitch2midi-bass~] instead: same interface \, range from low B (31 Hz) \, octave-error guard for weak low fundamentals.;
 #X text 620 400 Tips: feed one monophonic source (voice / bass / guitar single notes). Range ~40 Hz - 2.5 kHz (MIDI 28-99). Latency ~1.5-3 periods + 10 ms (about 15 ms at A4 and 65 ms at low E2).;
 #X msg 20 140 \; pd dsp 1;
 #X connect 4 0 5 0;

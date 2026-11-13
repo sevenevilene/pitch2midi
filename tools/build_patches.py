@@ -19,6 +19,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BAND_BASE_HZ = 55.0
 BAND_COUNT = 12          # 55 Hz ... 2489 Hz  -> detects roughly 40 Hz .. 2.5 kHz
 
+# Bass guitar variant: 5-string low B (31 Hz) up to ~950 Hz. Fewer bands
+# (less CPU, no high-band false hits from pick/slap transients), a strong-but-
+# unsettled low band vetoes higher ones (weak low-B fundamentals), and a
+# shorter stability wait so low notes speak sooner.
+BASS = dict(name="pitch2midi-bass~", base_hz=36.71, band_count=10, hip_hz=15,
+            periods=1.0, pend_ratio=0.03,
+            title="pitch2midi-bass~ [channel] [threshold dBFS] [bend range] : "
+                  "pitch2midi~ tuned for bass guitar (B0 31 Hz .. ~950 Hz)")
+
 
 class Patch:
     def __init__(self, w=1000, h=800):
@@ -58,6 +67,10 @@ class Patch:
 #   inlet~ 1 : audio
 #   inlet  2 : float = input power -> evaluates the band
 #   outlet 1 : frequency (Hz) if this band holds a valid, stable fundamental
+#   outlet 2 : bang if the band is strong (power > $2 * input power) but its
+#              periods are not consistent yet, i.e. a low fundamental that is
+#              still building up. The bass variant uses it to veto higher bands
+#              (prevents octave-up errors at the attack). Unused by default.
 # ---------------------------------------------------------------------------
 def build_band():
     p = Patch(1100, 900)
@@ -75,6 +88,7 @@ def build_band():
         return o
 
     out = p.obj(700, 820, "outlet")
+    o_pend = p.obj(800, 820, "outlet")
 
     # --- 4th order low pass (2x Butterworth biquad) -----------------------
     bq1 = p.obj(20, 90, "biquad~")
@@ -166,6 +180,11 @@ def build_band():
     p.c(pw, snpw); p.c(tb, snpw, 5); p.c(snpw, gtp)
     spA = p.obj(560, 760, "spigot")
     p.c(gtp, spA, 0, 1)
+    pratio = p.obj(1000, 120, "* \\$2")
+    pgt = p.obj(1000, 180, ">")
+    p.c(tbf, pratio, 1); p.c(pratio, pgt, 0, 1); p.c(snpw, pgt)
+    spP = p.obj(800, 760, "spigot")
+    p.c(pgt, spP, 0, 1); p.c(spP, o_pend)
 
     s4 = p.obj(1000, 210, "snapshot~"); p.c(ivals[3], s4); p.c(tb, s4, 4)
     s3 = p.obj(900, 240, "snapshot~"); p.c(ivals[2], s3); p.c(tb, s3, 3)
@@ -197,7 +216,7 @@ def build_band():
     p.c(tb, fA, 0); p.c(fA, sA)
     p.c(sA, fP1, 0)
     sB = p.obj(720, 620, "sel 1")
-    p.c(sA, fB, 1); p.c(fB, sB); p.c(sB, fS1, 0)
+    p.c(sA, fB, 1); p.c(fB, sB); p.c(sB, fS1, 0); p.c(sB, spP, 1)
     p.c(fP1, spA); p.c(fS1, spA)
 
     mos = p.obj(560, 790, "moses 2")
@@ -283,10 +302,14 @@ def build_band():
 #              the distance between the detected pitch and the held note
 #   also sends note on/off to [noteout] and pitch bend to [bendout]
 # ---------------------------------------------------------------------------
-def build_main():
+def build_main(name="pitch2midi~", base_hz=BAND_BASE_HZ, band_count=BAND_COUNT,
+               hip_hz=20, periods=1.5, pend_ratio=None, title=None):
+    """periods    : extra stability time in periods of the note (latency vs. safety)
+    pend_ratio : if set, a strong band whose periods are not consistent yet
+                 vetoes all higher bands for that tick (anti octave-up)"""
     p = Patch(1300, 1000)
-    p.text(20, 10, "pitch2midi~ [channel] [threshold dBFS] : monophonic "
-                   "audio -> MIDI notes. Heavy / plugdata Compiled Mode safe")
+    p.text(20, 10, title or (name + " [channel] [threshold dBFS] [bend range] : monophonic "
+                             "audio -> MIDI notes. Heavy / plugdata Compiled Mode safe"))
     ain = p.obj(20, 50, "inlet~")
     cin = p.obj(900, 50, "inlet")
     o_note = p.obj(700, 940, "outlet")
@@ -294,16 +317,16 @@ def build_main():
     o_hz = p.obj(900, 940, "outlet")
     o_bend = p.obj(1000, 940, "outlet")
 
-    hp = p.obj(20, 80, "hip~ 20")
+    hp = p.obj(20, 80, "hip~ %g" % hip_hz)
     p.c(ain, hp)
 
     # filter bank
     bands = []
-    for i in range(BAND_COUNT):
-        fc = BAND_BASE_HZ * 2 ** (i / 2.0)
+    for i in range(band_count):
+        fc = base_hz * 2 ** (i / 2.0)
         x = 20 + (i % 6) * 120
         yy = 330 + (i // 6) * 30
-        b = p.obj(x, yy, "p2m.band~ %g" % round(fc, 2))
+        b = p.obj(x, yy, "p2m.band~ %g %g" % (round(fc, 2), pend_ratio or 1))
         p.c(hp, b)
         bands.append(b)
 
@@ -370,14 +393,20 @@ def build_main():
     m1 = p.msg(260, 400, "1")
     m0 = p.msg(300, 400, "0")
     p.c(tev, m1, 2); p.c(tev, m0, 2)
-    tb = p.obj(20, 300 - 10 + 20, "t " + " ".join(["f"] * BAND_COUNT))
+    tb = p.obj(20, 300 - 10 + 20, "t " + " ".join(["f"] * band_count))
     p.c(tev, tb, 1)
     for i, b in enumerate(bands):
-        p.c(tb, b, BAND_COUNT - 1 - i, 1)     # band 0 fires first
+        p.c(tb, b, band_count - 1 - i, 1)     # band 0 fires first
     col = p.obj(20, 410, "spigot 1")
     for b in bands:
         p.c(b, col)
     p.c(m1, col, 0, 1)
+    if pend_ratio:
+        # a strong low band that is still settling closes the collector
+        veto = p.msg(260, 430, "0")
+        for b in bands:
+            p.c(b, veto, 1)
+        p.c(veto, col, 0, 1)
     tcol = p.obj(20, 440, "t b f")
     p.c(col, tcol)
     m0b = p.msg(20, 470, "0")
@@ -389,9 +418,9 @@ def build_main():
     tc = p.obj(200, 560, "t f f")
     p.c(cm, tc, 1)
     p.c(tc, o_hz, 1)
-    # required stable ticks = N + 1.5 periods (4 ms ticks) -> low notes wait longer
+    # required stable ticks = N + `periods` periods (4 ms ticks) -> low notes wait longer
     treq = p.obj(300, 590, "t b f")
-    m375 = p.msg(300, 620, "375")
+    m375 = p.msg(300, 620, "%g" % (250 * periods))
     dreq = p.obj(300, 650, "/")
     areq = p.obj(300, 680, "+ 2")
     p.c(tc, treq, 1); p.c(treq, dreq, 1, 1); p.c(treq, m375, 0); p.c(m375, dreq); p.c(dreq, areq)
@@ -457,8 +486,11 @@ def build_main():
     rcur3 = p.obj(540, 750, "r \\$0-cur")
     neq = p.obj(500, 780, "!=")
     p.c(tch, neq, 1); p.c(rcur3, neq, 0, 1)
+    # re-attack: after an onset the same note may start again
+    retr = p.obj(500, 800, "||")
+    p.c(neq, retr)
     spT = p.obj(420, 810, "spigot")
-    p.c(neq, spT, 0, 1); p.c(tch, spT, 0)
+    p.c(retr, spT, 0, 1); p.c(tch, spT, 0)
 
     # new note: release old, then note on
     spD = p.obj(420, 830, "spigot")
@@ -496,6 +528,47 @@ def build_main():
     scur2 = p.obj(760, 750, "s \\$0-cur")
     p.c(trel, mneg, 0); p.c(mneg, scur2)
 
+    # onset (re-attack): a fast-decaying peak of a smoothed level (ignores
+    # low-note ripple) rises > 6 dB above a slowly rising floor -> forget the last candidate and
+    # allow the same note to be played again
+    olp = p.obj(1150, 80, "lop~ 20")
+    p.c(sq, olp)
+    osn = p.obj(1150, 110, "snapshot~")
+    p.c(olp, osn); p.c(met, osn)
+    omx = p.obj(1150, 140, "max 1e-20")
+    olg = p.obj(1150, 160, "log")
+    odb = p.obj(1150, 180, "* 4.342945")
+    p.c(osn, omx); p.c(omx, olg); p.c(olg, odb)
+    opk = p.obj(1150, 230, "max")
+    topk = p.obj(1150, 260, "t f f f")
+    odec = p.obj(1230, 230, "- 1")
+    p.c(odb, opk); p.c(opk, topk); p.c(topk, odec, 2); p.c(odec, opk, 0, 1)
+    ofl = p.obj(1230, 290, "min")
+    orise = p.obj(1300, 290, "+ 0.3")
+    p.c(topk, ofl, 1); p.c(ofl, orise); p.c(orise, ofl, 0, 1)
+    odiff = p.obj(1150, 320, "-")
+    p.c(ofl, odiff, 0, 1); p.c(topk, odiff, 0)
+    ons = p.obj(1150, 350, "> 6")
+    sons = p.obj(1150, 380, "sel 1")
+    p.c(odiff, ons); p.c(ons, sons)
+    tdet = p.obj(1150, 395, "t b b")
+    p.c(sons, tdet)
+    oref = p.obj(1150, 410, "spigot 1")         # 80 ms refractory time
+    p.c(tdet, oref, 0)
+    tons = p.obj(1230, 440, "t b b b b")       # 3: refractory, 1: retrigger, 0: forget
+    p.c(oref, tons)
+    oclose = p.msg(1080, 440, "0")
+    odel = p.obj(1080, 470, "delay 80")
+    oopen = p.msg(1080, 500, "1")
+    p.c(tons, oclose, 3); p.c(oclose, oref, 0, 1)
+    p.c(tons, odel, 3); p.c(odel, oopen); p.c(oopen, oref, 0, 1)
+    fpk = p.obj(1300, 410, "f")
+    p.c(topk, fpk, 1, 1); p.c(tdet, fpk, 1); p.c(fpk, ofl, 0, 1)   # floor := peak
+    mret = p.msg(1300, 350, "1")
+    p.c(tons, mret, 1); p.c(mret, retr, 0, 1)
+    mret0 = p.msg(520, 870, "0")
+    p.c(tnn, mret0, 1); p.c(mret0, retr, 0, 1)
+
     # gate closed -> release + forget last candidate
     tgo = p.obj(560, 230, "t b b")
     p.c(sel0, tgo, 0)
@@ -503,6 +576,7 @@ def build_main():
     mneg2 = p.msg(560, 260, "-1")
     sln2 = p.obj(560, 290, "s \\$0-lastn")
     p.c(tgo, mneg2, 0); p.c(mneg2, sln2)
+    p.c(tons, mneg2, 0)
 
     # output: outlets (always) + noteout (switchable)
     tout = p.obj(700, 850, "t a a")
@@ -585,7 +659,7 @@ def build_main():
     mlast = p.msg(1080, 850, "99999")            # first bend value always goes out
     p.c(tia, mlast, 3); p.c(mlast, nb, 0, 1)
 
-    p.write(os.path.join(ROOT, "pitch2midi~.pd"))
+    p.write(os.path.join(ROOT, name + ".pd"))
 
 
 # ---------------------------------------------------------------------------
@@ -652,6 +726,8 @@ def build_help():
     p.text(620, 260, "To use it from ANOTHER patch or app with [notein]: "
                      "pick a virtual MIDI port as Pd's MIDI output (macOS: IAC Driver "
                      "in Audio MIDI Setup). Inside the same patch just use the outlets.")
+    p.text(620, 470, "Bass guitar? Use [pitch2midi-bass~] instead: same interface, "
+                     "range from low B (31 Hz), octave-error guard for weak low fundamentals.")
     p.text(620, 400, "Tips: feed one monophonic source (voice / bass / guitar single notes). "
                      "Range ~40 Hz - 2.5 kHz (MIDI 28-99). Latency ~1.5-3 periods + 10 ms "
                      "(about 15 ms at A4 and 65 ms at low E2).")
@@ -662,5 +738,6 @@ def build_help():
 if __name__ == "__main__":
     build_band()
     build_main()
+    build_main(**BASS)
     build_help()
-    print("wrote p2m.band~.pd, pitch2midi~.pd, pitch2midi~-help.pd")
+    print("wrote p2m.band~.pd, pitch2midi~.pd, pitch2midi-bass~.pd, pitch2midi~-help.pd")

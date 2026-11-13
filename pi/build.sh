@@ -48,7 +48,10 @@ fi
 # 4. Pd patch -> C++ -> binaries
 echo "== compiling patch with hvcc =="
 rm -rf "$BUILD"
-"$VENV/bin/hvcc" "$HERE/pitch2midi_app.pd" -o "$BUILD" -n pitch2midi \
+APP="$HERE/pitch2midi_app.pd"
+[ "${VARIANT:-}" = bass ] && APP="$HERE/pitch2midi_bass_app.pd"
+echo "   patch: $APP"
+"$VENV/bin/hvcc" "$APP" -o "$BUILD" -n pitch2midi \
   -p "$ROOT" -m "$HERE/meta.json" -g dpf 2>&1 | grep -v "rzero~\] accepts only signal" || true
 [ -f "$BUILD/Makefile" ] || { echo "hvcc failed" >&2; exit 1; }
 ln -s "$DPF" "$BUILD/dpf"

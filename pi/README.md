@@ -29,6 +29,13 @@ The script:
 
 Expect the first build to take a few minutes on a Pi 4.
 
+For bass guitar, build the bass-tuned variant (`pitch2midi-bass~`, low B at
+31 Hz up to about 950 Hz) instead:
+
+```bash
+VARIANT=bass ./pi/build.sh
+```
+
 ## Run
 
 JACK must be running. Patchbox OS starts it with your Pisound / sound card.

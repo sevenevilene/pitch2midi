@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Compares Pd output (out.txt, 'EV: note ms vel') with truth.csv."""
+"""Compares Pd output (out.txt, 'EV: note ms vel') with truth.csv.
+usage: evaluate.py [out.txt] [truth.csv]"""
 import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 truth = []
-for line in open(os.path.join(HERE, "truth.csv")):
+for line in open(os.path.join(HERE, sys.argv[2] if len(sys.argv) > 2 else "truth.csv")):
     s, e, m, l = line.strip().split(",")
     truth.append((float(s) * 1000, float(e) * 1000, int(m), l))
 

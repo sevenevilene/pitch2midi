@@ -2,9 +2,12 @@
 test/test.wav
 test/truth.csv
 test/out*.txt
+test/.run_tmp.pd
 build/
 .DS_Store
 __pycache__/
 pi/build/
 pi/dpf/
 pi/.venv/
+test/bass_test.wav
+test/bass_truth.csv
