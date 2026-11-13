@@ -12,6 +12,7 @@ and can be exported to C++/Daisy/DPF/Web.
 |---|---|
 | `pitch2midi~.pd` | the abstraction you use |
 | `pitch2midi-bass~.pd` | the same detector tuned for bass guitar (see below) |
+| `bass-example.pd` | ready-to-use bass patch: input 1 → MIDI notes + pitch bend, with a threshold box and a built-in "listen" synth |
 | `p2m.band~.pd` | internal sub-abstraction (keep it next to `pitch2midi~.pd`) |
 | `pitch2midi~-help.pd` | help / example patch |
 | `tools/build_patches.py` | generator: the patches are generated from this script. Edit it and re-run it to change them |
