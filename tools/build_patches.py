@@ -24,7 +24,7 @@ BAND_COUNT = 12          # 55 Hz ... 2489 Hz  -> detects roughly 40 Hz .. 2.5 kH
 # unsettled low band vetoes higher ones (weak low-B fundamentals), and a
 # shorter stability wait so low notes speak sooner.
 BASS = dict(name="pitch2midi-bass~", base_hz=36.71, band_count=10, hip_hz=15,
-            periods=1.0, pend_ratio=0.03,
+            periods=1.0, pend_ratio=0.03, min_ratio=0.001,
             title="pitch2midi-bass~ [channel] [threshold dBFS] [bend range] : "
                   "pitch2midi~ tuned for bass guitar (B0 31 Hz .. ~950 Hz)")
 
@@ -171,7 +171,7 @@ def build_band():
     # Hypothesis B: two crossings per cycle  -> P1 ~ P3 and P2 ~ P4, period = P1+P2
     tbf = p.obj(700, 90, "t b f")
     p.c(tin, tbf)
-    ratio = p.obj(780, 120, "* 0.001")         # band must hold >= -30 dB of input power
+    ratio = p.obj(780, 120, "* \\$3")           # band must hold >= $3 of the input power
     gtp = p.obj(900, 180, ">")
     p.c(tbf, ratio, 1); p.c(ratio, gtp, 0, 1)
     tb = p.obj(700, 150, "t b b b b b b")
@@ -303,7 +303,8 @@ def build_band():
 #   also sends note on/off to [noteout] and pitch bend to [bendout]
 # ---------------------------------------------------------------------------
 def build_main(name="pitch2midi~", base_hz=BAND_BASE_HZ, band_count=BAND_COUNT,
-               hip_hz=20, periods=1.5, pend_ratio=None, title=None):
+               hip_hz=20, periods=1.5, pend_ratio=None, min_ratio=0.001, max_leap=7.5,
+               title=None):
     """periods    : extra stability time in periods of the note (latency vs. safety)
     pend_ratio : if set, a strong band whose periods are not consistent yet
                  vetoes all higher bands for that tick (anti octave-up)"""
@@ -326,7 +327,7 @@ def build_main(name="pitch2midi~", base_hz=BAND_BASE_HZ, band_count=BAND_COUNT,
         fc = base_hz * 2 ** (i / 2.0)
         x = 20 + (i % 6) * 120
         yy = 330 + (i // 6) * 30
-        b = p.obj(x, yy, "p2m.band~ %g %g" % (round(fc, 2), pend_ratio or 1))
+        b = p.obj(x, yy, "p2m.band~ %g %g %g" % (round(fc, 2), pend_ratio or 1, min_ratio))
         p.c(hp, b)
         bands.append(b)
 
@@ -433,7 +434,25 @@ def build_main(name="pitch2midi~", base_hz=BAND_BASE_HZ, band_count=BAND_COUNT,
     # pitch hysteresis: stay on current note while within 0.8 semitone
     # t b f f: store pitch -> note logic -> pitch bend for the (new) current note
     tbe = p.obj(40, 660, "t b f f")
-    p.c(fo, tbe)
+    # leap guard: while a note is held and there has been no new attack, drop
+    # candidates more than `max_leap` semitones away (hum, octave flips and
+    # subharmonics while a note rings out). Legato moves in small steps.
+    tlg = p.obj(40, 630, "t f f")
+    p.c(fo, tlg)
+    rcur6 = p.obj(1300, 600, "r \\$0-cur")
+    lsub = p.obj(1220, 630, "-")
+    p.c(tlg, lsub, 1); p.c(rcur6, lsub, 0, 1)
+    labs = p.obj(1220, 660, "abs")
+    lbig = p.obj(1220, 690, "> %g" % max_leap)
+    lhas = p.obj(1300, 630, ">= 0")
+    p.c(rcur6, lhas)
+    lm1 = p.obj(1220, 720, "*")
+    lm2 = p.obj(1220, 750, "*")                  # right inlet: 1 = locked (no attack since note on)
+    lok = p.obj(1220, 780, "== 0")
+    p.c(lsub, labs); p.c(labs, lbig); p.c(lbig, lm1); p.c(lhas, lm1, 0, 1)
+    p.c(lm1, lm2); p.c(lm2, lok)
+    lsp = p.obj(40, 645, "spigot")
+    p.c(lok, lsp, 0, 1); p.c(tlg, lsp, 0); p.c(lsp, tbe)
     tm = p.obj(140, 680, "t f f")
     p.c(tbe, tm, 1)
     fpit = p.obj(1000, 560, "f")
@@ -568,6 +587,10 @@ def build_main(name="pitch2midi~", base_hz=BAND_BASE_HZ, band_count=BAND_COUNT,
     p.c(tons, mret, 1); p.c(mret, retr, 0, 1)
     mret0 = p.msg(520, 870, "0")
     p.c(tnn, mret0, 1); p.c(mret0, retr, 0, 1)
+    mlock = p.msg(1300, 820, "1")
+    p.c(tnn, mlock, 1); p.c(mlock, lm2, 0, 1)
+    munlock = p.msg(1300, 470, "0")
+    p.c(tons, munlock, 1); p.c(munlock, lm2, 0, 1)
 
     # gate closed -> release + forget last candidate
     tgo = p.obj(560, 230, "t b b")

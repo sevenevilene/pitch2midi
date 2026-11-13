@@ -40,7 +40,7 @@
 #X obj 320 120 *~;
 #X obj 320 150 lop~ 20;
 #X obj 700 90 t b f;
-#X obj 780 120 * 0.001;
+#X obj 780 120 * \$3;
 #X obj 900 180 >;
 #X obj 700 150 t b b b b b b;
 #X obj 900 150 snapshot~;

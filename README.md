@@ -69,6 +69,13 @@ Same interface and messages as `pitch2midi~`, tuned for bass:
   little sooner. Raise it with `stable <ticks>` if you get wrong notes at the attack.
 - `hip~ 15` instead of `hip~ 20`, so low B isn't attenuated.
 
+Both versions also have a **leap guard**: while a note rings and there has
+been no new attack, the detector ignores jumps of more than 7 semitones. As
+a high note decays, mains hum (50/60 Hz) and subharmonics can get strong enough
+in the low bands to win. Without the guard, the output flips between the real
+note and the hum or the octave below. A new pluck unlocks the guard. Hammer-ons,
+pull-offs and slides move in small steps, so they still work.
+
 Both versions now also detect a **re-attack of the same note** (e.g. repeated
 8th notes on one string): if the level jumps by more than 6 dB, the same note
 can start again once it is stable.
@@ -89,7 +96,8 @@ can start again once it is stable.
 4. Note logic: a level gate with 6 dB hysteresis, ±0.8 semitone pitch hysteresis,
    and a stability requirement of 2 ticks plus 1.5 periods. An onset detector
    (a fast-decaying peak of the level rising 6 dB above a slow floor, 80 ms
-   refractory time) lets the same note retrigger. A release guard blocks
+   refractory time) lets the same note retrigger. Without such an attack, a
+   held note can only move by up to 7 semitones (leap guard). A release guard blocks
    new notes while the level is falling fast, so note tails and filter ringing
    don't trigger anything. Velocity comes from the level at the onset.
 
@@ -117,6 +125,11 @@ note starts slightly sharp, like a plucked string.
 | `pitch2midi-bass~`, Pd 48 kHz | 50/50 | 0 | 92 ms | |
 | `pitch2midi-bass~`, Heavy compiled C, 44.1 kHz | 50/50 | 0 | 98 ms | 0.4 % of one core |
 
+`test/make_bass_high_test_audio.py` adds 23 long, ringing high notes (E3–C5)
+over loud mains hum (about −48 dBFS) and noise. Before the leap guard, the bass
+version got **0/23**: every note flipped to the hum or a lower octave while it
+decayed. It now gets **23/23** (Pd and Heavy).
+
 Bass latency is mostly physics: a low E (41 Hz) has a 24 ms period and the
 detector needs a few of them, so expect ~100–130 ms on the E string and up to
 ~250 ms on a low B with a weak fundamental; notes from A2 up take 30–60 ms.
@@ -132,6 +145,9 @@ python3 test/make_test_audio.py && test/run.sh
 ```
 ```bash
 python3 test/make_bass_test_audio.py && test/run.sh bass_test.wav bass_truth.csv "pitch2midi-bass~ 1 -50"
+```
+```bash
+python3 test/make_bass_high_test_audio.py && test/run.sh bass_high_test.wav bass_high_truth.csv "pitch2midi-bass~ 1 -50"
 ```
 
 Heavy version (needs `pip install hvcc`):
@@ -151,6 +167,9 @@ fed in as a signal (`sig~ 1`), which is the form Heavy supports.
   settings in the generator.
 - A re-attack of the *same* note is only detected when the level jumps by more
   than 6 dB. A very soft re-pluck over a loud ringing note is missed.
+- Because of the leap guard, a jump of more than 7 semitones *without* a new
+  attack (e.g. a wide hammer-on or tapped note) is ignored until the next
+  attack. Change `max_leap` in the generator if you play like that.
 
 ## License
 

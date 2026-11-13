@@ -11,3 +11,5 @@ pi/dpf/
 pi/.venv/
 test/bass_test.wav
 test/bass_truth.csv
+test/bass_high_test.wav
+test/bass_high_truth.csv
