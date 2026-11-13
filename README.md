@@ -19,23 +19,35 @@ and can be exported to C++/Daisy/DPF/Web.
 
 To reuse it, copy `pitch2midi~.pd` and `p2m.band~.pd` into your project folder
 (or into a folder on Pd's search path) and create `[pitch2midi~ 1 -50]`.
+An optional third argument sets the pitch bend range: `[pitch2midi~ 1 -50 2]`.
 
 ## Interface
 
 ```
-[pitch2midi~ <midi channel=1> <threshold dBFS=-50>]
+[pitch2midi~ <midi channel=1> <threshold dBFS=-50> <bend range=2>]
  inlet~ 1 : audio (one monophonic source)
  inlet  2 : thresh <dBFS> | stable <ticks> | midi <0|1> | channel <1-16>
+            | bend <0|1> | bendrange <semitones>
  outlet 1 : note number   ┐ same order as [notein]: velocity is sent first,
  outlet 2 : velocity      ┘ then the note (velocity 0 = note off)
  outlet 3 : detected frequency in Hz (continuous)
- + note on/off is sent to [noteout] (the MIDI out port); turn it off with "midi 0"
+ outlet 4 : pitch bend, -8192..8191 (0 = centre, same scale as [bendout])
+ + note on/off is sent to [noteout] and pitch bend to [bendout] (the MIDI out
+   port); turn both off with "midi 0", or only the bend with "bend 0"
 ```
 
 **Using it with `[notein]`:** in the same patch, use the outlets the way you would
 use `[notein]`'s outlets. For another patch or app, set Pd's MIDI output to a
 virtual port (on macOS, the IAC Driver in Audio MIDI Setup) and listen on that
 port with `[notein]`.
+
+**Pitch bend:** notes snap to the nearest semitone, so the leftover distance
+between the detected pitch and the held note is sent as pitch bend
+(`(pitch − note) / bendrange × 8192`). This carries vibrato, slides and
+out-of-tune playing. A new note's bend is sent just before its note-on. A value
+is only sent when it changes. Set your synth's bend range to the same number of
+semitones as `bendrange` (default 2). The bend keeps its last value after a
+note-off, so a release tail doesn't jump in pitch.
 
 ## How it works
 

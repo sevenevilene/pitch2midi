@@ -273,11 +273,15 @@ def build_band():
 # pitch2midi~ : main abstraction
 #   args     : [pitch2midi~ <midi channel (1)> <threshold dBFS (-50)>]
 #   inlet~ 1 : audio (monophonic)
-#   inlet  2 : control: thresh <dBFS>, stable <ticks>, midi <0|1>, channel <n>
+#   args     : ... <bend range in semitones (2)>
+#   inlet  2 : control: thresh <dBFS>, stable <ticks>, midi <0|1>, channel <n>,
+#              bend <0|1>, bendrange <semitones>
 #   outlet 1 : note number   (like notein left outlet)
 #   outlet 2 : velocity      (0 = note off; sent BEFORE the note number)
 #   outlet 3 : detected frequency in Hz (continuous, while a pitch is valid)
-#   also sends note on/off to [noteout]
+#   outlet 4 : pitch bend -8192..8191 (0 = centre, same range as [bendout]):
+#              the distance between the detected pitch and the held note
+#   also sends note on/off to [noteout] and pitch bend to [bendout]
 # ---------------------------------------------------------------------------
 def build_main():
     p = Patch(1300, 1000)
@@ -288,6 +292,7 @@ def build_main():
     o_note = p.obj(700, 940, "outlet")
     o_vel = p.obj(800, 940, "outlet")
     o_hz = p.obj(900, 940, "outlet")
+    o_bend = p.obj(1000, 940, "outlet")
 
     hp = p.obj(20, 80, "hip~ 20")
     p.c(ain, hp)
@@ -397,8 +402,13 @@ def build_main():
     p.c(tc, flg, 0); p.c(flg, fk); p.c(fk, fo)
 
     # pitch hysteresis: stay on current note while within 0.8 semitone
+    # t b f f: store pitch -> note logic -> pitch bend for the (new) current note
+    tbe = p.obj(40, 660, "t b f f")
+    p.c(fo, tbe)
     tm = p.obj(140, 680, "t f f")
-    p.c(fo, tm)
+    p.c(tbe, tm, 1)
+    fpit = p.obj(1000, 560, "f")
+    p.c(tbe, fpit, 2, 1); p.c(tbe, fpit, 0, 0)
     rcur1 = p.obj(260, 690, "r \\$0-cur")
     dcur = p.obj(220, 720, "-")
     p.c(tm, dcur, 1); p.c(rcur1, dcur, 0, 1)
@@ -455,10 +465,11 @@ def build_main():
     p.c(gcmp, spD, 0, 1); p.c(spT, spD)
     tnn = p.obj(420, 850, "t f b")
     p.c(spD, tnn)
-    tnf = p.obj(420, 870, "t f f")
+    tnf = p.obj(420, 870, "t f b f")
     p.c(tnn, tnf, 0)
     scur = p.obj(520, 900, "s \\$0-cur")
-    p.c(tnf, scur, 1)
+    p.c(tnf, scur, 2)
+    p.c(tnf, fpit, 1, 0)
     ton = p.obj(420, 900, "t f b")
     p.c(tnf, ton, 0)
     p.c(ton, fdb, 1)
@@ -505,8 +516,36 @@ def build_main():
     nout = p.obj(900, 910, "noteout")
     p.c(spm, up2); p.c(up2, nout, 1, 1); p.c(up2, nout, 0, 0)
 
+    # pitch bend = (pitch - current note) / range * 8192, only while a note is held
+    rcur5 = p.obj(1100, 560, "r \\$0-cur")
+    hasn = p.obj(1100, 590, ">= 0")
+    p.c(rcur5, hasn)
+    bsp = p.obj(1000, 620, "spigot")
+    p.c(fpit, bsp); p.c(hasn, bsp, 0, 1)
+    bsub = p.obj(1000, 650, "-")
+    p.c(bsp, bsub); p.c(rcur5, bsub, 0, 1)
+    brng = p.obj(1000, 680, "/ 2")
+    bsc = p.obj(1000, 710, "* 8192")
+    bcl = p.obj(1000, 740, "clip -8192 8191")
+    p.c(bsub, brng); p.c(brng, bsc); p.c(bsc, bcl)
+    brd = p.obj(1000, 770, "+ 8192.5")           # round (floor of a positive value)
+    bi = p.obj(1000, 800, "i")
+    boff = p.obj(1000, 830, "- 8192")
+    p.c(bcl, brd); p.c(brd, bi); p.c(bi, boff)
+    # only send when the value changes
+    tdd = p.obj(1000, 860, "t f f")
+    nb = p.obj(1080, 880, "!=")
+    spd = p.obj(1000, 890, "spigot")
+    tdo = p.obj(1000, 910, "t f f")
+    p.c(boff, tdd); p.c(tdd, nb, 1, 0); p.c(nb, spd, 0, 1); p.c(tdd, spd, 0, 0)
+    p.c(spd, tdo); p.c(tdo, nb, 1, 1); p.c(tdo, o_bend, 0)
+    spbe = p.obj(1150, 910, "spigot 1")          # "bend 0|1"
+    spbm = p.obj(1150, 940, "spigot 1")          # "midi 0|1"
+    bout = p.obj(1150, 970, "bendout")
+    p.c(tdo, spbe, 0); p.c(spbe, spbm); p.c(spbm, bout)
+
     # control inlet
-    rt = p.obj(900, 90, "route thresh stable midi channel")
+    rt = p.obj(900, 90, "route thresh stable midi channel bend bendrange")
     p.c(cin, rt)
     thr = p.obj(900, 130, "+ 100")
     p.c(rt, thr, 0)
@@ -515,12 +554,15 @@ def build_main():
     p.c(fstate, stm)
     mst = p.obj(1000, 130, "max 1")
     p.c(rt, mst, 1); p.c(mst, areq, 0, 1)
-    p.c(rt, spm, 2, 1)
+    p.c(rt, spm, 2, 1); p.c(rt, spbm, 2, 1)
     chn = p.obj(1100, 130, "clip 1 16")
-    p.c(rt, chn, 3); p.c(chn, nout, 0, 2)
+    p.c(rt, chn, 3); p.c(chn, nout, 0, 2); p.c(chn, bout, 0, 1)
+    p.c(rt, spbe, 4, 1)
+    brc = p.obj(1200, 130, "clip 0.1 96")
+    p.c(rt, brc, 5); p.c(brc, brng, 0, 1)
 
     # init from creation arguments
-    tia = p.obj(620, 80, "t b b b")
+    tia = p.obj(620, 80, "t b b b b")
     p.c(tinit, tia, 1)
     a1 = p.obj(620, 110, "f \\$1")
     p.c(tia, a1, 2)
@@ -534,6 +576,14 @@ def build_main():
     p.c(s0, m50, 0); p.c(m50, thr); p.c(s0, thr, 1)
     mi = p.msg(780, 110, "-1")
     p.c(tia, mi, 0); p.c(mi, scur2); p.c(mi, sln2)
+    a3 = p.obj(1200, 50, "f \\$3")
+    p.c(tia, a3, 3)
+    s03 = p.obj(1200, 80, "sel 0")
+    p.c(a3, s03)
+    m2 = p.msg(1200, 105, "2")
+    p.c(s03, m2, 0); p.c(m2, brc); p.c(s03, brc, 1)
+    mlast = p.msg(1080, 850, "99999")            # first bend value always goes out
+    p.c(tia, mlast, 3); p.c(mlast, nb, 0, 1)
 
     p.write(os.path.join(ROOT, "pitch2midi~.pd"))
 
@@ -560,17 +610,24 @@ def build_help():
     p.text(600, 170, "MIDI port output off / on")
     m4 = p.msg(470, 200, "channel 2")
     p.text(570, 200, "MIDI channel 1-16")
+    m5 = p.msg(470, 230, "bend 0")
+    m5b = p.msg(530, 230, "bend 1")
+    p.text(600, 230, "pitch bend output off / on")
+    m6 = p.msg(470, 260, "bendrange 2")
+    p.text(570, 260, "synth bend range in semitones (default 2)")
     det = p.obj(20, 250, "pitch2midi~ 1 -50")
     p.c(adc, det); p.c(tsw, det)
-    for m in (m1, m2, m3, m3b, m4):
+    for m in (m1, m2, m3, m3b, m4, m5, m5b, m6):
         p.c(m, det, 0, 1)
-    p.text(20, 225, "args: [pitch2midi~ <midi channel> <threshold dBFS>]")
+    p.text(20, 225, "args: [pitch2midi~ <midi channel> <threshold dBFS> <bend range>]")
     n = p.atom(20, 300, 5, "note")
     v = p.atom(110, 300, 5, "vel")
     hz = p.atom(200, 300, 7, "Hz")
-    p.c(det, n, 0); p.c(det, v, 1); p.c(det, hz, 2)
+    bd = p.atom(310, 300, 6, "bend")
+    p.c(det, n, 0); p.c(det, v, 1); p.c(det, hz, 2); p.c(det, bd, 3)
     p.text(20, 335, "outlets work like [notein]: velocity arrives first then note (velocity 0 = note off). "
-                    "Notes are also sent to [noteout] -> your MIDI out port.")
+                    "Notes are also sent to [noteout] and the bend to [bendout] -> your MIDI out port. "
+                    "Set your synth's bend range to match bendrange.")
     pk = p.obj(20, 390, "pack f f")
     pr = p.obj(20, 420, "print pitch2midi")
     p.c(det, pk, 0); p.c(det, pk, 1, 1); p.c(pk, pr)
