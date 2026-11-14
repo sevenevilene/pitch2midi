@@ -66,6 +66,30 @@ same file, then rebuild. In the LV2 plugin, `thresh`, `stable` and `bend` (0 = o
 are plugin parameters you can change from the host. To turn pitch bend on in the
 JACK app, change `[bend 0(` to `[bend 1(` in the app patch and rebuild.
 
+## Recording test takes
+
+To tune the detector on a real instrument, record a set of test takes straight
+from the Pisound input. The detector isn't involved: these are raw recordings
+that get replayed through it on another computer.
+
+```bash
+sudo apt install jack-capture
+```
+```bash
+./pi/record_takes.sh bass
+```
+
+It walks you through 8 short takes: silence (hum/noise), open strings,
+chromatic runs, repeated notes, legato, long high notes, soft/loud and free
+playing. Press Return to start and stop each take, `s` to skip one. After each
+take it shows the level and warns if it clipped or is very quiet. Then you
+can type what you played. Use `guitar` instead of `bass` for guitar, and
+`AUDIO_IN=system:capture_2` for the other input.
+
+The files go to `pi/recordings/<instrument>-<date>/` together with `notes.txt`
+(what you played) and `info.txt` (JACK sample rate / buffer size). They are
+not committed to git; copy them over with `scp -r`.
+
 ## Notes
 
 - hvcc warns about every `rzero~`. That's expected and harmless.
